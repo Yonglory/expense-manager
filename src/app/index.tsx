@@ -12,7 +12,9 @@ import { Animal } from '../components/Animal';
 import { ItemModal } from '../components/ItemModal';
 import { ItemRow } from '../components/ItemRow';
 import { TotalsBar } from '../components/TotalsBar';
+import { Bob, CountUp, PressScale } from '../components/Motion';
 import { Button, Segmented } from '../components/ui';
+import { fmt } from '../lib/format';
 
 export default function BudgetScreen() {
   const { profile, household } = useAuth();
@@ -105,20 +107,30 @@ function Budget({ householdId, name, animal }: { householdId: string; name: stri
             { id: 'in', label: 'Money in', bg: colors.greenSoft, fg: colors.greenText },
           ]}
         />
+        <View style={s.tabTotal}>
+          <Text style={s.tabTotalLabel}>{tab === 'out' ? 'Total money out' : 'Total money in'}</Text>
+          <CountUp
+            value={tab === 'out' ? totalOut : totalIn}
+            format={fmt}
+            style={[s.tabTotalValue, { color: tab === 'out' ? colors.pinkText : colors.greenText }]}
+          />
+        </View>
       </View>
 
       {(error || notice) && <Text style={s.notice}>{error ? `Couldn't load your list. ${error}` : notice}</Text>}
 
       <View style={{ flex: 1 }}>
         <FlatList
+          key={`${month}-${tab}`}
           data={shown}
           keyExtractor={(i) => i.id}
           contentContainerStyle={s.list}
           refreshing={loading}
           onRefresh={reload}
-          renderItem={({ item }) => (
+          renderItem={({ item, index }) => (
             <ItemRow
               item={item}
+              index={index}
               onToggle={() => update(item.id, { paid: !item.paid })}
               onEdit={() => setModal({ open: true, item })}
             />
@@ -135,9 +147,13 @@ function Budget({ householdId, name, animal }: { householdId: string; name: stri
             )
           }
         />
-        <Pressable style={s.fab} onPress={() => setModal({ open: true, item: null })} accessibilityLabel="Add item">
-          <Ionicons name="add" size={28} color="#fff" />
-        </Pressable>
+        <View style={s.fabWrap} pointerEvents="box-none">
+          <Bob amp={3} duration={1200}>
+            <PressScale onPress={() => setModal({ open: true, item: null })} style={s.fab} accessibilityLabel="Add item">
+              <Ionicons name="add" size={28} color="#fff" />
+            </PressScale>
+          </Bob>
+        </View>
       </View>
 
       <View style={s.pad}>
@@ -177,8 +193,12 @@ const s = StyleSheet.create({
   empty: { alignItems: 'center', gap: 8, paddingTop: 28, paddingHorizontal: 12 },
   emptyTitle: { fontSize: 16, fontWeight: '600', color: colors.text },
   emptyText: { color: colors.sub, textAlign: 'center', marginBottom: 6 },
+  tabTotal: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingHorizontal: 6, paddingTop: 10 },
+  tabTotalLabel: { color: colors.sub, fontSize: 13 },
+  tabTotalValue: { fontSize: 18, fontWeight: '700' },
+  fabWrap: { position: 'absolute', right: 20, bottom: 14 },
   fab: {
-    position: 'absolute', right: 20, bottom: 14, width: 52, height: 52, borderRadius: 26,
+    width: 52, height: 52, borderRadius: 26,
     backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center',
     shadowColor: '#6BB3F0', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 4,
   },

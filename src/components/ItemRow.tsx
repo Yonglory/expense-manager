@@ -4,27 +4,31 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../lib/theme';
 import { fmt } from '../lib/format';
 import type { Item } from '../lib/types';
-import { Pop } from './Motion';
+import { FadeIn, Pop } from './Motion';
 
-export function ItemRow({ item, onToggle, onEdit }: { item: Item; onToggle: () => void; onEdit: () => void }) {
+export function ItemRow({
+  item, index, onToggle, onEdit,
+}: { item: Item; index: number; onToggle: () => void; onEdit: () => void }) {
   const isOut = item.kind === 'out';
   const done = isOut && item.paid;
   return (
-    <View style={s.row}>
-      {isOut ? (
-        <Pressable onPress={onToggle} hitSlop={10} accessibilityRole="checkbox" accessibilityState={{ checked: item.paid }}>
-          <Pop trigger={item.paid} style={[s.cb, item.paid && s.cbOn]}>
-            {item.paid && <Ionicons name="checkmark" size={14} color="#fff" />}
-          </Pop>
+    <FadeIn delay={Math.min(index, 10) * 45}>
+      <View style={[s.row, done && s.rowDone]}>
+        {isOut ? (
+          <Pressable onPress={onToggle} hitSlop={10} accessibilityRole="checkbox" accessibilityState={{ checked: item.paid }}>
+            <Pop trigger={item.paid} style={[s.cb, item.paid && s.cbOn]}>
+              {item.paid && <Ionicons name="checkmark" size={14} color="#fff" />}
+            </Pop>
+          </Pressable>
+        ) : (
+          <Ionicons name="cash-outline" size={20} color={colors.greenText} />
+        )}
+        <Pressable style={s.body} onPress={onEdit}>
+          <Text style={[s.name, done && s.done]} numberOfLines={1}>{item.name}</Text>
+          <Text style={[s.amount, done && s.done]}>{fmt(item.amount)}</Text>
         </Pressable>
-      ) : (
-        <Ionicons name="cash-outline" size={20} color={colors.greenText} />
-      )}
-      <Pressable style={s.body} onPress={onEdit}>
-        <Text style={[s.name, done && s.done]} numberOfLines={1}>{item.name}</Text>
-        <Text style={[s.amount, done && s.done]}>{fmt(item.amount)}</Text>
-      </Pressable>
-    </View>
+      </View>
+    </FadeIn>
   );
 }
 
@@ -33,6 +37,7 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14,
     borderRadius: 16, backgroundColor: colors.row, marginBottom: 6,
   },
+  rowDone: { backgroundColor: colors.greenSoft },
   cb: {
     width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: '#B9C8D8',
     backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',

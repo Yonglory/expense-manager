@@ -50,7 +50,7 @@ export default function AuthScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
           <View style={{ alignItems: 'center', gap: 8 }}>
-            <Logo size={"20%"} />
+            <Logo size={up ? 56 : 72} />
             <Text style={s.title}>{up ? 'Create your account' : 'Welcome back'}</Text>
             {!up && <Text style={s.sub}>Plan the month together with your family</Text>}
           </View>

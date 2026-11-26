@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
@@ -45,43 +45,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [setupError, setSetupError] = useState<string | null>(null);
 
+  const loadTicket = useRef(0);
+
   const loadProfile = useCallback(async (sess: Session | null) => {
-    if (!sess) {
-      setProfile(null);
-      setHousehold(null);
-      setMembers([]);
-      setSetupError(null);
-      return;
-    }
-    let { data: p } = await supabase.from('profiles').select('*').eq('id', sess.user.id).maybeSingle();
-    if (!p) {
-      // First sign-in after sign-up: create the profile + household (or join by code).
-      const m = (sess.user.user_metadata ?? {}) as Record<string, any>;
-      const { error } = await supabase.rpc('setup_profile', {
-        p_name: m.display_name ?? '',
-        p_animal: m.animal ?? 'bunny',
-        p_join_code: m.join_code ?? null,
-      });
-      if (error) {
-        setSetupError(error.message);
+    const ticket = ++loadTicket.current;
+    const stale = () => ticket !== loadTicket.current;
+    try {
+      if (!sess) {
         setProfile(null);
+        setHousehold(null);
+        setMembers([]);
+        setSetupError(null);
         return;
       }
+      const first = await supabase.from('profiles').select('*').eq('id', sess.user.id).maybeSingle();
+      if (first.error) throw first.error;
+      let p = first.data;
+      if (!p) {
+        // First sign-in after sign-up: create the profile + household (or join by code).
+        const m = (sess.user.user_metadata ?? {}) as Record<string, any>;
+        const { error } = await supabase.rpc('setup_profile', {
+          p_name: m.display_name ?? '',
+          p_animal: m.animal ?? 'bunny',
+          p_join_code: m.join_code ?? null,
+        });
+        if (error) throw error;
+        const res = await supabase.from('profiles').select('*').eq('id', sess.user.id).maybeSingle();
+        if (res.error) throw res.error;
+        p = res.data;
+      }
+      if (!p) throw new Error('Your profile could not be created. Tap Try again.');
+      const [h, ms] = await Promise.all([
+        supabase.from('households').select('*').eq('id', p.household_id).maybeSingle(),
+        supabase.from('profiles').select('*').eq('household_id', p.household_id).order('created_at'),
+      ]);
+      if (h.error) throw h.error;
+      if (ms.error) throw ms.error;
+      if (stale()) return;
       setSetupError(null);
-      const res = await supabase.from('profiles').select('*').eq('id', sess.user.id).maybeSingle();
-      p = res.data;
-    }
-    if (!p) {
+      setHousehold((h.data as Household) ?? null);
+      setMembers((ms.data ?? []) as Profile[]);
+      setProfile(p as Profile);
+    } catch (err: any) {
+      if (stale()) return;
+      const raw = String(err?.message ?? err);
+      const denied = err?.code === '42501' || /permission denied/i.test(raw);
+      setSetupError(
+        denied
+          ? 'Your database needs permission to share its tables with the app. Run supabase/fix-grants.sql in the Supabase SQL Editor, then tap Try again.'
+          : raw,
+      );
       setProfile(null);
-      return;
     }
-    const [h, ms] = await Promise.all([
-      supabase.from('households').select('*').eq('id', p.household_id).maybeSingle(),
-      supabase.from('profiles').select('*').eq('household_id', p.household_id).order('created_at'),
-    ]);
-    setHousehold((h.data as Household) ?? null);
-    setMembers((ms.data ?? []) as Profile[]);
-    setProfile(p as Profile);
   }, []);
 
   useEffect(() => {
@@ -135,7 +150,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { needsConfirm: !data.session };
       },
       signOut: async () => {
-        await supabase.auth.signOut();
+        // Clear everything right away so the screen switches instantly, even if the network is slow.
+        loadTicket.current++;
+        setSession(null);
+        setProfile(null);
+        setHousehold(null);
+        setMembers([]);
+        setSetupError(null);
+        try {
+          await supabase.auth.signOut();
+        } catch {
+          await supabase.auth.signOut({ scope: 'local' });
+        }
       },
       reload: async () => {
         await loadProfile(session);

@@ -91,7 +91,7 @@ export function Animal({ animal, size = 40 }: { animal: AnimalId; size?: number 
   const { fill, stroke } = PALETTE[animal] ?? PALETTE.bunny;
   const a: AnimalId = PALETTE[animal] ? animal : 'bunny';
   return (
-    <Svg width={size} height={size} viewBox="0 0 48 48">
+    <Svg width={size} height={size} viewBox="-3 -3 54 54">
       <Ears animal={a} />
       <Fluff fill={fill} stroke={stroke} />
       {a === 'lamb' && <Ellipse cx={24} cy={29} rx={9.5} ry={9} fill="#F1D9C8" />}

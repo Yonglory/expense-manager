@@ -1,18 +1,33 @@
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { Stack } from 'expo-router';
+import React, { useEffect } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { Stack, usePathname, useRootNavigationState, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '../context/AuthContext';
-import { Animal } from '../components/Animal';
-import { Bob } from '../components/Motion';
+import { Loading } from '../components/Loading';
 import { colors } from '../lib/theme';
 
 function Gate() {
   const { session, profile, loading } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+  const navReady = !!useRootNavigationState()?.key;
+
+  // Belt and braces: always land on the screen that matches the sign-in state (fixes sign out sticking).
+  useEffect(() => {
+    if (!navReady || loading) return;
+    if (!session) {
+      if (pathname !== '/auth') router.replace('/auth');
+    } else if (!profile) {
+      if (pathname !== '/setup') router.replace('/setup');
+    } else if (pathname === '/auth' || pathname === '/setup') {
+      router.replace('/');
+    }
+  }, [navReady, loading, session, profile, pathname, router]);
+
   return (
     <>
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
+      <Stack screenOptions={{ headerShown: false, animation: 'fade_from_bottom', contentStyle: { backgroundColor: colors.bg } }}>
         <Stack.Protected guard={!session}>
           <Stack.Screen name="auth" />
         </Stack.Protected>
@@ -26,11 +41,8 @@ function Gate() {
         </Stack.Protected>
       </Stack>
       {loading && (
-        <View style={s.splash}>
-          <Bob>
-            <Animal animal="bunny" size={96} />
-          </Bob>
-          <Text style={s.splashText}>Fluffing things up…</Text>
+        <View style={StyleSheet.absoluteFill}>
+          <Loading message="Fluffing things up…" />
         </View>
       )}
     </>
@@ -47,11 +59,3 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 }
-
-const s = StyleSheet.create({
-  splash: {
-    ...StyleSheet.absoluteFill, backgroundColor: colors.bg,
-    alignItems: 'center', justifyContent: 'center', gap: 12,
-  },
-  splashText: { color: colors.sub, fontSize: 14 },
-});

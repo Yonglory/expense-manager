@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Circle, Path } from 'react-native-svg';
+import Svg, { Circle } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
@@ -9,17 +9,10 @@ import { colors, sliceColors } from '../lib/theme';
 import { MONTH_NAMES, currentKey, fmt, parseKey } from '../lib/format';
 import { useItems } from '../lib/useItems';
 import { Animal } from '../components/Animal';
-import { Bob } from '../components/Motion';
+import { Bob, FadeIn } from '../components/Motion';
 import { Bubble } from '../components/ui';
 
 type Slice = { name: string; amount: number };
-
-function arcPath(cx: number, cy: number, r: number, a0: number, a1: number) {
-  const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
-  const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
-  const large = a1 - a0 > Math.PI ? 1 : 0;
-  return `M${cx} ${cy} L${x0} ${y0} A${r} ${r} 0 ${large} 1 ${x1} ${y1} Z`;
-}
 
 export default function ChartScreen() {
   const { household } = useAuth();
@@ -41,19 +34,43 @@ function Chart({ householdId, month }: { householdId: string; month: string }) {
     return { slices: top, total: top.reduce((sum, s) => sum + s.amount, 0) };
   }, [items]);
 
-  const v = useRef(new Animated.Value(0)).current;
+  // The ring sweeps around once when the screen opens (or the numbers change).
+  const sweep = useRef(new Animated.Value(0)).current;
+  const [prog, setProg] = useState(0);
   useEffect(() => {
-    v.setValue(0);
-    Animated.spring(v, { toValue: 1, friction: 6, tension: 60, useNativeDriver: true }).start();
-  }, [total, v]);
+    const id = sweep.addListener(({ value }) => setProg(value));
+    return () => sweep.removeListener(id);
+  }, [sweep]);
+  useEffect(() => {
+    sweep.setValue(0);
+    Animated.timing(sweep, { toValue: 1, duration: 1100, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+  }, [total, sweep]);
 
-  const size = 230, c = size / 2, r = size / 2 - 4;
-  let angle = -Math.PI / 2;
-  const paths = slices.map((sl, i) => {
-    const sweep = (sl.amount / total) * Math.PI * 2;
-    const p = arcPath(c, c, r, angle, angle + sweep);
-    angle += sweep;
-    return <Path key={i} d={p} fill={sliceColors[i % sliceColors.length]} stroke="#fff" strokeWidth={2} />;
+  const size = 240, c = size / 2, stroke = 38, rm = size / 2 - 4 - stroke / 2;
+  const circ = 2 * Math.PI * rm;
+  let acc = 0;
+  const rings = slices.map((sl, i) => {
+    const start = acc / total;
+    acc += sl.amount;
+    const end = acc / total;
+    const gap = slices.length > 1 ? 0.006 : 0;
+    const vis = Math.max(0, Math.min(end, prog) - start - (prog >= end ? gap : 0));
+    if (vis * circ < 0.5) return null;
+    return (
+      <Circle
+        key={i}
+        cx={c}
+        cy={c}
+        r={rm}
+        fill="none"
+        stroke={sliceColors[i % sliceColors.length]}
+        strokeWidth={stroke}
+        strokeDasharray={[vis * circ, circ]}
+        strokeDashoffset={-start * circ}
+        rotation={-90}
+        origin={`${c}, ${c}`}
+      />
+    );
   });
 
   const biggest = slices[0];
@@ -77,26 +94,25 @@ function Chart({ householdId, month }: { householdId: string; month: string }) {
               <Bob><Animal animal="bunny" size={46} /></Bob>
               <Bubble text={`${biggest.name} is the biggest at ${Math.round((biggest.amount / total) * 100)}%.`} />
             </View>
-            <Animated.View
-              style={{
-                alignSelf: 'center', marginVertical: 12, opacity: v,
-                transform: [
-                  { scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) },
-                  { rotate: v.interpolate({ inputRange: [0, 1], outputRange: ['-40deg', '0deg'] }) },
-                ],
-              }}
-            >
+            <View style={s.donut}>
               <Svg width={size} height={size}>
-                {slices.length === 1 ? <Circle cx={c} cy={c} r={r} fill={sliceColors[0]} /> : paths}
+                <Circle cx={c} cy={c} r={rm} fill="none" stroke={colors.track} strokeWidth={stroke} />
+                {rings}
               </Svg>
-            </Animated.View>
+              <View style={s.hole} pointerEvents="none">
+                <Text style={s.holeLabel}>Planned</Text>
+                <Text style={s.holeValue}>{fmt(total)}</Text>
+              </View>
+            </View>
             {slices.map((sl, i) => (
-              <View key={`${sl.name}-${i}`} style={s.legend}>
+              <FadeIn key={`${sl.name}-${i}`} delay={500 + i * 110}>
+              <View style={s.legend}>
                 <View style={[s.dot, { backgroundColor: sliceColors[i % sliceColors.length] }]} />
                 <Text style={s.name} numberOfLines={1}>{sl.name}</Text>
                 <Text style={s.pct}>{Math.round((sl.amount / total) * 100)}%</Text>
                 <Text style={s.amount}>{fmt(sl.amount)}</Text>
               </View>
+              </FadeIn>
             ))}
           </>
         )}
@@ -112,6 +128,10 @@ const s = StyleSheet.create({
   body: { padding: 16, gap: 8 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   center: { alignItems: 'center', gap: 12, paddingTop: 60 },
+  donut: { alignSelf: 'center', marginVertical: 12, width: 240, height: 240, alignItems: 'center', justifyContent: 'center' },
+  hole: { position: 'absolute', alignItems: 'center' },
+  holeLabel: { color: colors.sub, fontSize: 12 },
+  holeValue: { color: colors.text, fontSize: 20, fontWeight: '700' },
   empty: { color: colors.sub, textAlign: 'center' },
   legend: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 14, backgroundColor: colors.row, borderRadius: 14 },
   dot: { width: 12, height: 12, borderRadius: 6 },

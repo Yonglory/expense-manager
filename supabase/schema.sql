@@ -81,3 +81,9 @@ create policy "items: household all" on public.items
 do $$ begin
   alter publication supabase_realtime add table public.items;
 exception when duplicate_object then null; end $$;
+
+-- Newer Supabase projects need explicit grants before the app can read these tables.
+grant usage on schema public to authenticated;
+grant select on public.households to authenticated;
+grant select, update on public.profiles to authenticated;
+grant select, insert, update, delete on public.items to authenticated;

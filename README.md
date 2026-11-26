@@ -13,8 +13,9 @@ A monthly family budget app (React Native + Expo, one codebase for iOS and Andro
 
 1. Open your project: https://supabase.com/dashboard/project/hfzufkllhkvhlxnkrjoo
 2. SQL Editor > New query > paste all of `supabase/schema.sql` > Run.
-3. Authentication > Sign In / Providers > Email. For the easiest family setup, turn off "Confirm email". If you leave it on, new users confirm by email before their first sign-in; the app handles both.
-4. Project Settings > API Keys. Copy the Project URL and the anon / publishable key. Never put the service_role key in the app.
+3. (Newer projects only) the schema file already includes the grants; if the app shows a permission error, run `supabase/fix-grants.sql` too.
+4. Authentication > Sign In / Providers > Email. For the easiest family setup, turn off "Confirm email". If you leave it on, new users confirm by email before their first sign-in; the app handles both.
+5. Project Settings > API Keys. Copy the Project URL and the anon / publishable key. Never put the service_role key in the app.
 
 ## 2. Run the app
 
