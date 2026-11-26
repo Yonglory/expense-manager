@@ -49,3 +49,17 @@ Set the two `EXPO_PUBLIC_SUPABASE_*` values as EAS environment variables so the 
 ## Swap in your logo
 
 Replace the body of `src/components/Logo.tsx` with an `<Image>` of your logo. It's used on sign in and sign up.
+
+## Update 2: bills, shopping list, actual vs planned, month summary
+
+1. Install the reminders package (and add it to `plugins` in `app.json`):
+   `npx expo install expo-notifications`
+   If npm complains about peer dependencies, use `npm install expo-notifications --legacy-peer-deps`.
+2. Run `supabase/migration-002-features.sql` once in the Supabase SQL Editor.
+3. Restart `npx expo start`.
+
+What's new
+- **Bills** (bell icon): monthly bills with a due day and reminders. They create themselves in the budget every month. Phone reminders need the installed app or a development build; on web the screen works but reminders don't fire.
+- **Shopping list** (cart icon): shared list by category, "Buy again" suggestions, and "Done shopping" adds what you spent to a budget line as actual spent.
+- **Actual vs planned**: Money out items have an optional "Actual spent". The difference shows on the row.
+- **Month summary and last-month comparison**: at the bottom of the chart screen.

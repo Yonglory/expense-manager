@@ -11,6 +11,7 @@ import { useItems } from '../lib/useItems';
 import { Animal } from '../components/Animal';
 import { Bob, FadeIn } from '../components/Motion';
 import { Bubble } from '../components/ui';
+import { MonthSummary } from '../components/MonthSummary';
 
 type Slice = { name: string; amount: number };
 
@@ -114,6 +115,7 @@ function Chart({ householdId, month }: { householdId: string; month: string }) {
               </View>
               </FadeIn>
             ))}
+            <MonthSummary householdId={householdId} month={month} items={items} />
           </>
         )}
       </ScrollView>

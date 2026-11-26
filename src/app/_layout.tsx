@@ -5,7 +5,10 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { Loading } from '../components/Loading';
+import { initNotifications } from '../lib/reminders';
 import { colors } from '../lib/theme';
+
+initNotifications();
 
 function Gate() {
   const { session, profile, loading } = useAuth();
@@ -38,6 +41,8 @@ function Gate() {
           <Stack.Screen name="index" />
           <Stack.Screen name="chart" />
           <Stack.Screen name="household" />
+          <Stack.Screen name="bills" />
+          <Stack.Screen name="shopping" />
         </Stack.Protected>
       </Stack>
       {loading && (

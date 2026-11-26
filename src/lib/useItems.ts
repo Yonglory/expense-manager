@@ -3,7 +3,16 @@ import { supabase } from './supabase';
 import { shiftKey } from './format';
 import type { Item, Kind } from './types';
 
-const norm = (r: any): Item => ({ ...r, amount: Number(r.amount) });
+const norm = (r: any): Item => ({
+  ...r,
+  amount: Number(r.amount),
+  actual: r.actual == null ? null : Number(r.actual),
+  due_day: r.due_day ?? null,
+  bill_id: r.bill_id ?? null,
+});
+
+// Months where this session already created the recurring bills' items.
+const ensured = new Set<string>();
 
 export function useItems(householdId: string, month: string) {
   const [items, setItems] = useState<Item[]>([]);
@@ -11,6 +20,12 @@ export function useItems(householdId: string, month: string) {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    const key = `${householdId}|${month}`;
+    if (!ensured.has(key)) {
+      ensured.add(key);
+      const { error: e0 } = await supabase.rpc('ensure_month_bills', { p_month: month });
+      if (e0) ensured.delete(key);
+    }
     const { data, error: e } = await supabase
       .from('items')
       .select('*')
@@ -46,10 +61,12 @@ export function useItems(householdId: string, month: string) {
   }, [householdId, month, load]);
 
   const add = useCallback(
-    async (kind: Kind, name: string, amount: number) => {
+    async (kind: Kind, name: string, amount: number, actual?: number | null) => {
+      const row: Record<string, unknown> = { household_id: householdId, month, kind, name, amount };
+      if (kind === 'out' && actual != null) row.actual = actual;
       const { data, error: e } = await supabase
         .from('items')
-        .insert({ household_id: householdId, month, kind, name, amount })
+        .insert(row)
         .select()
         .single();
       if (e) return e.message;
@@ -60,7 +77,7 @@ export function useItems(householdId: string, month: string) {
   );
 
   const update = useCallback(
-    async (id: string, patch: Partial<Pick<Item, 'name' | 'amount' | 'paid'>>) => {
+    async (id: string, patch: Partial<Pick<Item, 'name' | 'amount' | 'paid' | 'actual'>>) => {
       setItems((cur) => cur.map((i) => (i.id === id ? { ...i, ...patch } : i)));
       const { error: e } = await supabase.from('items').update(patch).eq('id', id);
       if (e) {
@@ -89,13 +106,15 @@ export function useItems(householdId: string, month: string) {
   const copyFromPrevious = useCallback(async () => {
     const { data, error: e } = await supabase
       .from('items')
-      .select('kind,name,amount')
+      .select('kind,name,amount,bill_id')
       .eq('household_id', householdId)
       .eq('month', shiftKey(month, -1))
       .order('created_at', { ascending: true });
     if (e) return e.message;
-    if (!data || data.length === 0) return 'Last month has no items to copy.';
-    const rows = data.map((r: any) => ({
+    // Recurring bills create themselves, so only copy the other items.
+    const copyable = (data ?? []).filter((r: any) => !r.bill_id);
+    if (copyable.length === 0) return 'Last month has no other items to copy.';
+    const rows = copyable.map((r: any) => ({
       household_id: householdId,
       month,
       kind: r.kind,

@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../lib/theme';
-import { fmt } from '../lib/format';
+import { fmt, ordinal } from '../lib/format';
 import type { Item } from '../lib/types';
 import { FadeIn, Pop } from './Motion';
 
@@ -11,6 +11,8 @@ export function ItemRow({
 }: { item: Item; index: number; onToggle: () => void; onEdit: () => void }) {
   const isOut = item.kind === 'out';
   const done = isOut && item.paid;
+  const hasActual = isOut && item.actual != null;
+  const diff = hasActual ? (item.actual as number) - item.amount : 0;
   return (
     <FadeIn delay={Math.min(index, 10) * 45}>
       <View style={[s.row, done && s.rowDone]}>
@@ -24,8 +26,29 @@ export function ItemRow({
           <Ionicons name="cash-outline" size={20} color={colors.greenText} />
         )}
         <Pressable style={s.body} onPress={onEdit}>
-          <Text style={[s.name, done && s.done]} numberOfLines={1}>{item.name}</Text>
-          <Text style={[s.amount, done && s.done]}>{fmt(item.amount)}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[s.name, done && s.done]} numberOfLines={1}>{item.name}</Text>
+            {item.due_day != null && isOut && (
+              <Text style={s.sub}>
+                <Ionicons name="alarm-outline" size={11} color={colors.blueText} /> Due {ordinal(item.due_day)}
+              </Text>
+            )}
+          </View>
+          <View style={s.right}>
+            <Text style={[s.amount, done && s.done]}>{fmt(item.amount)}</Text>
+            {hasActual && (
+              <View style={s.actualRow}>
+                <Text style={s.sub}>spent {fmt(item.actual as number)}</Text>
+                {diff !== 0 && (
+                  <View style={[s.diff, { backgroundColor: diff > 0 ? colors.peach : colors.greenSoft }]}>
+                    <Text style={[s.diffText, { color: diff > 0 ? colors.peachText : colors.greenText }]}>
+                      {diff > 0 ? '+' : '-'}{fmt(Math.abs(diff))}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
         </Pressable>
       </View>
     </FadeIn>
@@ -44,7 +67,12 @@ const s = StyleSheet.create({
   },
   cbOn: { backgroundColor: colors.green, borderColor: colors.green },
   body: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  name: { flex: 1, fontSize: 16, color: colors.text },
+  name: { fontSize: 16, color: colors.text },
+  sub: { fontSize: 11, color: colors.sub, marginTop: 1 },
+  right: { alignItems: 'flex-end' },
   amount: { fontSize: 15, color: colors.sub },
+  actualRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 },
+  diff: { borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1 },
+  diffText: { fontSize: 11, fontWeight: '600' },
   done: { textDecorationLine: 'line-through', color: colors.muted },
 });

@@ -8,7 +8,31 @@ export type Item = {
   name: string;
   amount: number;
   paid: boolean;
+  actual: number | null; // what was really spent, when different from the plan
+  due_day: number | null; // day of month, for bills
+  bill_id: string | null;
   created_at: string;
 };
 export type Profile = { id: string; display_name: string; animal: AnimalId; household_id: string };
 export type Household = { id: string; name: string; code: string };
+export type Bill = {
+  id: string;
+  household_id: string;
+  name: string;
+  amount: number;
+  due_day: number;
+  remind_days_before: number;
+  active: boolean;
+  start_month: string;
+};
+export type ShopCategory = 'Groceries' | 'Household' | 'Baby' | 'Other';
+export type ShopItem = {
+  id: string;
+  household_id: string;
+  name: string;
+  category: ShopCategory;
+  est_price: number;
+  done: boolean;
+  archived: boolean;
+  created_at: string;
+};

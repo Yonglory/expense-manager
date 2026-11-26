@@ -6,10 +6,12 @@ import { Animal } from './Animal';
 import { Bob, CountUp, GrowBar, Sparkles } from './Motion';
 import { Bubble } from './ui';
 
-export function TotalsBar({ totalIn, totalOut, paid }: { totalIn: number; totalOut: number; paid: number }) {
+export function TotalsBar({
+  totalIn, totalOut, paid, toPay: toPayProp, allPaid: allPaidProp,
+}: { totalIn: number; totalOut: number; paid: number; toPay?: number; allPaid?: boolean }) {
   const left = totalIn - totalOut;
-  const toPay = Math.max(0, totalOut - paid);
-  const allPaid = totalOut > 0 && toPay === 0;
+  const toPay = toPayProp ?? Math.max(0, totalOut - paid);
+  const allPaid = allPaidProp ?? (totalOut > 0 && toPay === 0);
 
   let message: string;
   if (allPaid) message = 'Everything is paid. Great job!';
