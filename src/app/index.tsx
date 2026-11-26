@@ -142,7 +142,7 @@ function Budget({ householdId, name, animal }: { householdId: string; name: stri
                 <Text style={s.emptyText}>
                   {tab === 'out' ? 'Add what you plan to spend this month.' : 'Add your paycheck and other income.'}
                 </Text>
-                <Button label={`Copy from ${MONTH_NAMES[parseKey(shiftKey(month, -1)).month0]}`} tone="soft" onPress={copy} style={{ alignSelf: 'stretch' }} />
+                <Button label={`Copy from ${MONTH_NAMES[parseKey(shiftKey(month, -1)).month0]}`} tone="soft" onPress={copy} style={{ alignSelf: 'stretch', paddingHorizontal: 10 }} />
               </View>
             )
           }
