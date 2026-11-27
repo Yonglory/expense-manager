@@ -63,3 +63,16 @@ What's new
 - **Shopping list** (cart icon): shared list by category, "Buy again" suggestions, and "Done shopping" adds what you spent to a budget line as actual spent.
 - **Actual vs planned**: Money out items have an optional "Actual spent". The difference shows on the row.
 - **Month summary and last-month comparison**: at the bottom of the chart screen.
+
+## Update 3: new shopping list and bills screens, offline use, Burmese and English
+
+1. Install the new packages:
+   `npm install @react-native-community/netinfo expo-font @expo-google-fonts/noto-sans-myanmar --legacy-peer-deps`
+2. Run `supabase/migration-003-categories.sql` once in the Supabase SQL Editor (after `migration-002-features.sql`).
+3. Restart `npx expo start`.
+
+What's new
+- **Shopping list**: add box at the top with a category picker, item count and total, items grouped by category with a subtotal, and Done shopping. Groceries, Household and Others are built in. Add or remove your own categories with the tag icon. Removing one moves its items to Others.
+- **Bills**: grouped into Waiting to be paid, This week, Later this month, Paid. Tap the circle to mark paid. The bell icon opens reminder settings.
+- **Offline use**: the app keeps a copy of your data on the phone. Changes you make with no signal wait in a queue and upload when you're back online. A clock icon marks rows waiting to sync. Settings shows the sync status, "Sync now", and a switch for syncing on mobile data.
+- **Burmese and English**: you choose on first launch and can switch in the household screen or on the sign-in screen. All Burmese words are in `src/i18n/strings.ts` (the `my` object). Edit any line there.

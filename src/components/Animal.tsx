@@ -1,6 +1,7 @@
 import React from 'react';
 import Svg, { Circle, Ellipse, Path, Polygon } from 'react-native-svg';
 import type { AnimalId } from '../lib/types';
+import type { Dict } from '../i18n/strings';
 
 export const ANIMALS: { id: AnimalId; label: string }[] = [
   { id: 'bunny', label: 'Bunny' },
@@ -8,6 +9,10 @@ export const ANIMALS: { id: AnimalId; label: string }[] = [
   { id: 'cat', label: 'Kitty' },
   { id: 'lamb', label: 'Lamb' },
 ];
+
+export function animalLabel(t: Dict, id: AnimalId): string {
+  return { bunny: t.animalBunny, bear: t.animalBear, cat: t.animalCat, lamb: t.animalLamb }[id];
+}
 
 const FLUFF: [number, number, number][] = [
   [24, 30, 13], [12, 31, 6], [36, 31, 6], [24, 42, 6], [14, 39, 5],

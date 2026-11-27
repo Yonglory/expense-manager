@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../components/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
 import { colors, sliceColors } from '../lib/theme';
-import { MONTH_NAMES, currentKey, fmt, parseKey } from '../lib/format';
+import { currentKey, fmt, parseKey } from '../lib/format';
+import { useI18n } from '../i18n/I18nContext';
 import { useItems } from '../lib/useItems';
 import { Animal } from '../components/Animal';
 import { Bob, FadeIn } from '../components/Motion';
@@ -24,6 +26,7 @@ export default function ChartScreen() {
 
 function Chart({ householdId, month }: { householdId: string; month: string }) {
   const router = useRouter();
+  const { t } = useI18n();
   const { items } = useItems(householdId, month);
   const { month0 } = parseKey(month);
 
@@ -31,9 +34,9 @@ function Chart({ householdId, month }: { householdId: string; month: string }) {
     const out = items.filter((i) => i.kind === 'out' && i.amount > 0).sort((a, b) => b.amount - a.amount);
     const top: Slice[] = out.slice(0, 5).map((i) => ({ name: i.name, amount: i.amount }));
     const rest = out.slice(5).reduce((sum, i) => sum + i.amount, 0);
-    if (rest > 0) top.push({ name: 'Others', amount: rest });
+    if (rest > 0) top.push({ name: t.catOthers, amount: rest });
     return { slices: top, total: top.reduce((sum, s) => sum + s.amount, 0) };
-  }, [items]);
+  }, [items, t]);
 
   // The ring sweeps around once when the screen opens (or the numbers change).
   const sweep = useRef(new Animated.Value(0)).current;
@@ -81,19 +84,19 @@ function Chart({ householdId, month }: { householdId: string; month: string }) {
         <Pressable onPress={() => router.back()} hitSlop={10}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </Pressable>
-        <Text style={s.title}>{MONTH_NAMES[month0]} spending</Text>
+        <Text style={s.title}>{t.spendingTitle(t.monthNames[month0])}</Text>
       </View>
       <ScrollView contentContainerStyle={s.body}>
         {slices.length === 0 ? (
           <View style={s.center}>
             <Animal animal="bunny" size={90} />
-            <Text style={s.empty}>Nothing to chart yet. Add some Money out items first.</Text>
+            <Text style={s.empty}>{t.chartEmpty}</Text>
           </View>
         ) : (
           <>
             <View style={s.row}>
               <Bob><Animal animal="bunny" size={46} /></Bob>
-              <Bubble text={`${biggest.name} is the biggest at ${Math.round((biggest.amount / total) * 100)}%.`} />
+              <Bubble text={t.biggestIs(biggest.name, Math.round((biggest.amount / total) * 100))} />
             </View>
             <View style={s.donut}>
               <Svg width={size} height={size}>
@@ -101,7 +104,7 @@ function Chart({ householdId, month }: { householdId: string; month: string }) {
                 {rings}
               </Svg>
               <View style={s.hole} pointerEvents="none">
-                <Text style={s.holeLabel}>Planned</Text>
+                <Text style={s.holeLabel}>{t.planned}</Text>
                 <Text style={s.holeValue}>{fmt(total)}</Text>
               </View>
             </View>

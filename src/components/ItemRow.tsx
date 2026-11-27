@@ -1,14 +1,20 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text } from './Text';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../lib/theme';
-import { fmt, ordinal } from '../lib/format';
+import { fmt } from '../lib/format';
+import { canSync, useSyncState } from '../lib/offline';
+import { useI18n } from '../i18n/I18nContext';
 import type { Item } from '../lib/types';
 import { FadeIn, Pop } from './Motion';
 
 export function ItemRow({
   item, index, onToggle, onEdit,
 }: { item: Item; index: number; onToggle: () => void; onEdit: () => void }) {
+  const { t } = useI18n();
+  const sync = useSyncState();
+  const waiting = !canSync(sync) && sync.pendingIds.includes(item.id);
   const isOut = item.kind === 'out';
   const done = isOut && item.paid;
   const hasActual = isOut && item.actual != null;
@@ -30,15 +36,18 @@ export function ItemRow({
             <Text style={[s.name, done && s.done]} numberOfLines={1}>{item.name}</Text>
             {item.due_day != null && isOut && (
               <Text style={s.sub}>
-                <Ionicons name="alarm-outline" size={11} color={colors.blueText} /> Due {ordinal(item.due_day)}
+                <Ionicons name="alarm-outline" size={11} color={colors.blueText} /> {t.dueOn(item.due_day)}
               </Text>
             )}
           </View>
           <View style={s.right}>
-            <Text style={[s.amount, done && s.done]}>{fmt(item.amount)}</Text>
+            <View style={s.amountRow}>
+              {waiting && <Ionicons name="time-outline" size={13} color={colors.sub} />}
+              <Text style={[s.amount, done && s.done]}>{fmt(item.amount)}</Text>
+            </View>
             {hasActual && (
               <View style={s.actualRow}>
-                <Text style={s.sub}>spent {fmt(item.actual as number)}</Text>
+                <Text style={s.sub}>{t.spentLabel(fmt(item.actual as number))}</Text>
                 {diff !== 0 && (
                   <View style={[s.diff, { backgroundColor: diff > 0 ? colors.peach : colors.greenSoft }]}>
                     <Text style={[s.diffText, { color: diff > 0 ? colors.peachText : colors.greenText }]}>
@@ -70,6 +79,7 @@ const s = StyleSheet.create({
   name: { fontSize: 16, color: colors.text },
   sub: { fontSize: 11, color: colors.sub, marginTop: 1 },
   right: { alignItems: 'flex-end' },
+  amountRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   amount: { fontSize: 15, color: colors.sub },
   actualRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 },
   diff: { borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1 },

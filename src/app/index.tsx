@@ -1,11 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../components/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
 import { colors } from '../lib/theme';
-import { MONTHS, MONTH_NAMES, currentKey, dueDateFor, monthKey, ordinal, parseKey, shiftKey } from '../lib/format';
+import { currentKey, dueDateFor, monthKey, parseKey, shiftKey } from '../lib/format';
+import { useI18n } from '../i18n/I18nContext';
+import { SyncBanner } from '../components/SyncBanner';
 import { syncReminders } from '../lib/reminders';
 import { useItems } from '../lib/useItems';
 import type { AnimalId, Item, Kind } from '../lib/types';
@@ -25,6 +28,7 @@ export default function BudgetScreen() {
 
 function Budget({ householdId, name, animal }: { householdId: string; name: string; animal: AnimalId }) {
   const router = useRouter();
+  const { t } = useI18n();
   const [month, setMonth] = useState(currentKey());
   const [tab, setTab] = useState<Kind>('out');
   const [modal, setModal] = useState<{ open: boolean; item: Item | null }>({ open: false, item: null });
@@ -67,18 +71,18 @@ function Budget({ householdId, name, animal }: { householdId: string; name: stri
     const overdue = list.filter((x) => x.due < today);
     if (overdue.length > 0) {
       const names = overdue.slice(0, 2).map((x) => x.i.name).join(', ');
-      return { tone: 'peach' as const, text: `Waiting to be paid: ${names}${overdue.length > 2 ? ` and ${overdue.length - 2} more` : ''}` };
+      return { tone: 'peach' as const, text: t.waitingPaid(names, Math.max(0, overdue.length - 2)) };
     }
     const soon = list.filter((x) => (x.due.getTime() - today.getTime()) / 86400000 <= 7);
     if (soon.length > 0) {
       const first = soon[0];
       return {
         tone: 'blue' as const,
-        text: `Coming up: ${first.i.name} on the ${ordinal(first.i.due_day as number)}${soon.length > 1 ? ` and ${soon.length - 1} more` : ''}`,
+        text: t.comingUp(first.i.name, first.i.due_day as number, soon.length - 1),
       };
     }
     return null;
-  }, [items, month]);
+  }, [items, month, t]);
 
   // Keep phone reminders in step with what's paid.
   const billSig = items.filter((i) => i.bill_id).map((i) => `${i.id}${i.paid ? 1 : 0}`).join(',');
@@ -98,40 +102,40 @@ function Budget({ householdId, name, animal }: { householdId: string; name: stri
 
   const copy = async () => {
     const err = await copyFromPrevious();
-    setNotice(err);
+    setNotice(err === 'nothing' ? t.nothingToCopy : err);
   };
 
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.header}>
-        <Pressable onPress={() => router.push('/household')} style={s.avatar} accessibilityLabel="Open household">
+        <Pressable onPress={() => router.push('/household')} style={s.avatar} accessibilityLabel={t.ourHousehold}>
           <Animal animal={animal} size={34} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={s.hi}>Hi, {name}</Text>
+          <Text style={s.hi}>{t.hi(name)}</Text>
           <View style={s.titleRow}>
             <Pressable onPress={() => setMonth(shiftKey(month, -1))} hitSlop={10}>
               <Ionicons name="chevron-back" size={18} color={colors.sub} />
             </Pressable>
-            <Text style={s.title}>{MONTH_NAMES[month0]} {year}</Text>
+            <Text style={s.title}>{t.monthNames[month0]} {year}</Text>
             <Pressable onPress={() => setMonth(shiftKey(month, 1))} hitSlop={10}>
               <Ionicons name="chevron-forward" size={18} color={colors.sub} />
             </Pressable>
           </View>
         </View>
-        <Pressable onPress={() => router.push({ pathname: '/chart', params: { month } })} hitSlop={8} accessibilityLabel="Spending chart">
+        <Pressable onPress={() => router.push({ pathname: '/chart', params: { month } })} hitSlop={8} accessibilityLabel={t.monthSummary}>
           <Ionicons name="pie-chart-outline" size={24} color={colors.text} />
         </Pressable>
-        <Pressable onPress={() => router.push('/shopping')} hitSlop={8} accessibilityLabel="Shopping list">
+        <Pressable onPress={() => router.push('/shopping')} hitSlop={8} accessibilityLabel={t.shoppingTitle}>
           <Ionicons name="cart-outline" size={24} color={colors.text} />
         </Pressable>
-        <Pressable onPress={() => router.push('/bills')} hitSlop={8} accessibilityLabel="Bills and reminders">
+        <Pressable onPress={() => router.push('/bills')} hitSlop={8} accessibilityLabel={t.billsTitle}>
           <Ionicons name="notifications-outline" size={24} color={colors.text} />
         </Pressable>
       </View>
 
       <ScrollView ref={chips} horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll} contentContainerStyle={s.chipRow}>
-        {MONTHS.map((m, i) => {
+        {t.monthShort.map((m, i) => {
           const on = i === month0;
           return (
             <Pressable key={m} onPress={() => setMonth(monthKey(year, i))} style={[s.chip, on && s.chipOn]}>
@@ -146,12 +150,12 @@ function Budget({ householdId, name, animal }: { householdId: string; name: stri
           value={tab}
           onChange={setTab}
           options={[
-            { id: 'out', label: 'Money out', bg: colors.pinkSoft, fg: colors.pinkText },
-            { id: 'in', label: 'Money in', bg: colors.greenSoft, fg: colors.greenText },
+            { id: 'out', label: t.moneyOut, bg: colors.pinkSoft, fg: colors.pinkText },
+            { id: 'in', label: t.moneyIn, bg: colors.greenSoft, fg: colors.greenText },
           ]}
         />
         <View style={s.tabTotal}>
-          <Text style={s.tabTotalLabel}>{tab === 'out' ? 'Total money out' : 'Total money in'}</Text>
+          <Text style={s.tabTotalLabel}>{tab === 'out' ? t.totalMoneyOut : t.totalMoneyIn}</Text>
           <CountUp
             value={tab === 'out' ? totalOut : totalIn}
             format={fmt}
@@ -159,6 +163,8 @@ function Budget({ householdId, name, animal }: { householdId: string; name: stri
           />
         </View>
       </View>
+
+      <SyncBanner />
 
       {banner && (
         <FadeIn style={s.bannerWrap}>
@@ -173,7 +179,7 @@ function Budget({ householdId, name, animal }: { householdId: string; name: stri
         </FadeIn>
       )}
 
-      {(error || notice) && <Text style={s.notice}>{error ? `Couldn't load your list. ${error}` : notice}</Text>}
+      {(error || notice) && <Text style={s.notice}>{error ? t.loadError(error) : notice}</Text>}
 
       <View style={{ flex: 1 }}>
         <FlatList
@@ -194,18 +200,18 @@ function Budget({ householdId, name, animal }: { householdId: string; name: stri
           ListEmptyComponent={
             loading ? undefined : (
               <View style={s.empty}>
-                <Text style={s.emptyTitle}>{tab === 'out' ? 'Nothing planned to spend yet' : 'No money in yet'}</Text>
+                <Text style={s.emptyTitle}>{tab === 'out' ? t.nothingPlanned : t.noMoneyIn}</Text>
                 <Text style={s.emptyText}>
-                  {tab === 'out' ? 'Add what you plan to spend this month.' : 'Add your paycheck and other income.'}
+                  {tab === 'out' ? t.addPlanned : t.addIncome}
                 </Text>
-                <Button label={`Copy from ${MONTH_NAMES[parseKey(shiftKey(month, -1)).month0]}`} tone="soft" onPress={copy} style={{ alignSelf: 'stretch', paddingHorizontal: 20 }} />
+                <Button label={t.copyFrom(t.monthNames[parseKey(shiftKey(month, -1)).month0])} tone="soft" onPress={copy} style={{ alignSelf: 'stretch' }} />
               </View>
             )
           }
         />
         <View style={s.fabWrap} pointerEvents="box-none">
           <Bob amp={3} duration={1200}>
-            <PressScale onPress={() => setModal({ open: true, item: null })} style={s.fab} accessibilityLabel="Add item">
+            <PressScale onPress={() => setModal({ open: true, item: null })} style={s.fab} accessibilityLabel={t.addToOut}>
               <Ionicons name="add" size={28} color="#fff" />
             </PressScale>
           </Bob>

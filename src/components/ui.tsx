@@ -1,7 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Pressable, StyleProp, StyleSheet, Text, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
+import { ActivityIndicator, Animated, Pressable, StyleProp, StyleSheet, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
+import { Text } from './Text';
 import { colors } from '../lib/theme';
 import { PressScale } from './Motion';
+import { useI18n } from '../i18n/I18nContext';
+import { BURMESE_REGULAR } from './Text';
 
 export function Button({
   label, onPress, tone = 'primary', busy, style,
@@ -15,12 +18,13 @@ export function Button({
   );
 }
 
-export function Field(props: TextInputProps & { icon?: React.ReactNode; containerStyle?: StyleProp<ViewStyle> }) {
-  const { icon, style, containerStyle, ...rest } = props;
+export function Field(props: TextInputProps & { icon?: React.ReactNode }) {
+  const { icon, style, ...rest } = props;
+  const { lang } = useI18n();
   return (
-    <View style={[s.field, containerStyle]}>
+    <View style={s.field}>
       {icon}
-      <TextInput placeholderTextColor={colors.muted} style={[s.input, style]} {...rest} />
+      <TextInput placeholderTextColor={colors.muted} style={[s.input, lang === 'my' && { fontFamily: BURMESE_REGULAR }, style]} {...rest} />
     </View>
   );
 }
