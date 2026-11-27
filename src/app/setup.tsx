@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Text } from '../components/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { colors } from '../lib/theme';
 import { Animal } from '../components/Animal';
 import { Loading } from '../components/Loading';
+import { useI18n } from '../i18n/I18nContext';
 import { Button, Field } from '../components/ui';
 
 // Shown only when a signed-in user has no household yet (for example, a wrong family code).
 export default function SetupScreen() {
+  const { t } = useI18n();
   const { setupError, retrySetup, signOut, reload } = useAuth();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -22,9 +25,9 @@ export default function SetupScreen() {
   if (!setupError) {
     return (
       <SafeAreaView style={s.safe}>
-        <Loading message="Getting your household ready…" />
+        <Loading message={t.setupReady} />
         <View style={s.signOutRow}>
-          <Button label="Sign out" tone="soft" onPress={signOut} />
+          <Button label={t.signOut} tone="soft" onPress={signOut} />
         </View>
       </SafeAreaView>
     );
@@ -33,14 +36,14 @@ export default function SetupScreen() {
     <SafeAreaView style={s.safe}>
       <View style={s.center}>
         <Animal animal="bunny" size={80} />
-        <Text style={s.title}>Let's finish setting up</Text>
+        <Text style={s.title}>{t.letsFinish}</Text>
         <Text style={s.err}>{setupError}</Text>
-        <Button label="Try again" onPress={async () => { setBusy(true); await reload(); setBusy(false); }} busy={busy} style={s.full} />
-        <Text style={s.sub}>Or use a family code:</Text>
-        <Field placeholder="Family code, for example HOME-4821" value={code} onChangeText={setCode} autoCapitalize="characters" />
-        <Button label="Join with this code" onPress={() => run(code)} busy={busy} style={s.full} />
-        <Button label="Start a new household" tone="green" onPress={() => run(null)} style={s.full} />
-        <Button label="Sign out" tone="soft" onPress={signOut} style={s.full} />
+        <Button label={t.tryAgain} onPress={async () => { setBusy(true); await reload(); setBusy(false); }} busy={busy} style={s.full} />
+        <Text style={s.sub}>{t.orUseCode}</Text>
+        <Field placeholder={t.familyCodePh} value={code} onChangeText={setCode} autoCapitalize="characters" />
+        <Button label={t.joinThisCode} onPress={() => run(code)} busy={busy} style={s.full} />
+        <Button label={t.startNew} tone="green" onPress={() => run(null)} style={s.full} />
+        <Button label={t.signOut} tone="soft" onPress={signOut} style={s.full} />
       </View>
     </SafeAreaView>
   );

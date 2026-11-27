@@ -1,8 +1,10 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Text } from './Text';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../lib/theme';
-import { MONTH_NAMES, fmt, parseKey, shiftKey } from '../lib/format';
+import { fmt, parseKey, shiftKey } from '../lib/format';
+import { useI18n } from '../i18n/I18nContext';
 import { useItems } from '../lib/useItems';
 import type { Item } from '../lib/types';
 import { Animal } from './Animal';
@@ -22,10 +24,11 @@ function totals(items: Item[]) {
 }
 
 export function MonthSummary({ householdId, month, items }: { householdId: string; month: string; items: Item[] }) {
+  const { t } = useI18n();
   const prev = useItems(householdId, shiftKey(month, -1)).items;
   const cur = useMemo(() => totals(items), [items]);
   const last = useMemo(() => totals(prev), [prev]);
-  const prevName = MONTH_NAMES[parseKey(shiftKey(month, -1)).month0];
+  const prevName = t.monthNames[parseKey(shiftKey(month, -1)).month0];
 
   const withActual = cur.out.filter((i) => i.actual != null);
   const delta = withActual.reduce((s, i) => s + ((i.actual as number) - i.amount), 0);
@@ -61,30 +64,30 @@ export function MonthSummary({ householdId, month, items }: { householdId: strin
       <View style={s.card}>
         <View style={s.head}>
           <Bob><Animal animal="bunny" size={40} /></Bob>
-          <Text style={s.title}>Month summary</Text>
+          <Text style={s.title}>{t.monthSummary}</Text>
         </View>
 
         <Text style={s.line}>
-          {paidPct >= 100 ? 'Everything you planned is paid. ' : `You've paid ${paidPct}% of what you planned. `}
-          <Text style={s.sub}>({fmt(cur.paid)} of {fmt(cur.planned)})</Text>
+          {paidPct >= 100 ? t.allPlannedPaid : t.paidPct(paidPct)}
+          <Text style={s.sub}>{t.paidOf(fmt(cur.paid), fmt(cur.planned))}</Text>
         </Text>
         {withActual.length > 0 && (
           <Text style={[s.pill, { backgroundColor: delta > 0 ? colors.peach : colors.greenSoft, color: delta > 0 ? colors.peachText : colors.greenText }]}>
-            {delta > 0
-              ? `${fmt(delta)} more than planned on the items you updated.`
-              : delta < 0
-                ? `${fmt(-delta)} less than planned. Nice!`
-                : 'Actual spending matched the plan.'}
+            {delta > 0 ? t.moreThanPlanned(fmt(delta)) : delta < 0 ? t.lessThanPlanned(fmt(-delta)) : t.matchedPlan}
           </Text>
         )}
-        {biggest && <Text style={s.line}>Biggest item: <Text style={s.bold}>{biggest.name}</Text> ({fmt(effective(biggest))})</Text>}
+        {biggest && <Text style={s.line}>{t.biggestItem}<Text style={s.bold}>{biggest.name}</Text> ({fmt(effective(biggest))})</Text>}
 
         {last.out.length > 0 && (
           <View style={s.compare}>
-            <Text style={s.sectionTitle}>Compared with {prevName}</Text>
+            <Text style={s.sectionTitle}>{t.comparedWith(prevName)}</Text>
             {overallPct !== null && (
               <Text style={s.line}>
-                Spending is {overallPct === 0 ? 'about the same' : `${overallPct > 0 ? 'up' : 'down'} ${Math.abs(overallPct)}%`} ({fmt(last.expected)} to {fmt(cur.expected)}).
+                {overallPct === 0
+                  ? t.spendingSame(fmt(last.expected), fmt(cur.expected))
+                  : overallPct > 0
+                    ? t.spendingUp(overallPct, fmt(last.expected), fmt(cur.expected))
+                    : t.spendingDown(Math.abs(overallPct), fmt(last.expected), fmt(cur.expected))}
               </Text>
             )}
             {changes.map((c) => (
@@ -98,7 +101,7 @@ export function MonthSummary({ householdId, month, items }: { householdId: strin
                 </View>
               </View>
             ))}
-            {changes.length === 0 && <Text style={s.sub}>No big changes in your items. Steady month!</Text>}
+            {changes.length === 0 && <Text style={s.sub}>{t.steady}</Text>}
           </View>
         )}
       </View>

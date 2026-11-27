@@ -1,39 +1,34 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from './supabase';
 import { currentKey } from './format';
-import type { Bill, Item } from './types';
+import { cacheSet, enqueue, useSyncState, uuid } from './offline';
+import { billsKey, loadBills, loadMonthItems, makeItem, patchMonthItems, queueItemInsert, queueItemUpdate } from './itemsData';
+import type { Bill } from './types';
 import { syncReminders } from './reminders';
 
 export type BillInput = { name: string; amount: number; due_day: number; remind_days_before: number; active: boolean };
+export type BillItemInfo = { id: string; paid: boolean };
 
-export function useBills(householdId: string, month = currentKey()) {
+export function useBills(householdId: string) {
   const [bills, setBills] = useState<Bill[]>([]);
-  const [thisMonth, setThisMonth] = useState<Record<string, Pick<Item, 'id' | 'paid'>>>({});
+  const [thisMonth, setThisMonth] = useState<Record<string, BillItemInfo>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { version } = useSyncState();
 
   const load = useCallback(async () => {
-    // Make sure this month's items exist so "Mark paid" works right away.
-    await supabase.rpc('ensure_month_bills', { p_month: month });
-    const [b, i] = await Promise.all([
-      supabase.from('bills').select('*').eq('household_id', householdId).order('due_day', { ascending: true }),
-      supabase.from('items').select('id,paid,bill_id').eq('household_id', householdId).eq('month', month).not('bill_id', 'is', null),
-    ]);
-    if (b.error) setError(b.error.message);
-    else {
-      setError(null);
-      setBills((b.data ?? []).map((r: any) => ({ ...r, amount: Number(r.amount) })));
-    }
-    const map: Record<string, Pick<Item, 'id' | 'paid'>> = {};
-    for (const r of i.data ?? []) map[(r as any).bill_id] = { id: (r as any).id, paid: (r as any).paid };
+    const [b, i] = await Promise.all([loadBills(householdId), loadMonthItems(householdId, currentKey())]);
+    setBills(b.bills);
+    setError(b.error ?? i.error);
+    const map: Record<string, BillItemInfo> = {};
+    for (const it of i.items) if (it.bill_id) map[it.bill_id] = { id: it.id, paid: it.paid };
     setThisMonth(map);
     setLoading(false);
-  }, [householdId, month]);
+  }, [householdId]);
 
   useEffect(() => {
-    setLoading(true);
     load();
-  }, [load]);
+  }, [load, version]);
 
   useEffect(() => {
     const ch = supabase
@@ -46,31 +41,67 @@ export function useBills(householdId: string, month = currentKey()) {
     };
   }, [householdId, load]);
 
-  const afterChange = useCallback(async () => {
-    await load();
-    await syncReminders(householdId);
-  }, [load, householdId]);
+  const applyBills = useCallback(
+    (fn: (cur: Bill[]) => Bill[]) => {
+      setBills((cur) => {
+        const next = fn(cur);
+        void cacheSet(billsKey(householdId), next);
+        return next;
+      });
+    },
+    [householdId],
+  );
 
   const save = useCallback(
     async (id: string | null, input: BillInput) => {
-      const res = id
-        ? await supabase.from('bills').update(input).eq('id', id)
-        : await supabase.from('bills').insert({ ...input, household_id: householdId, start_month: currentKey() });
-      if (res.error) return res.error.message;
-      await afterChange();
-      return null;
+      const month = currentKey();
+      if (id) {
+        applyBills((cur) => cur.map((b) => (b.id === id ? { ...b, ...input } : b)));
+        void enqueue({ table: 'bills', kind: 'update', rowId: id, data: { ...input } });
+        // The unpaid item for this month follows the edit.
+        const item = thisMonth[id];
+        if (item && !item.paid) {
+          const fields = { name: input.name, amount: input.amount, due_day: input.due_day };
+          await patchMonthItems(householdId, month, (items) => items.map((i) => (i.id === item.id ? { ...i, ...fields } : i)));
+          queueItemUpdate(item.id, fields);
+        }
+      } else {
+        const bill: Bill = { id: uuid(), household_id: householdId, ...input, start_month: month };
+        applyBills((cur) => [...cur, bill].sort((a, b) => a.due_day - b.due_day));
+        void enqueue({
+          table: 'bills',
+          kind: 'insert',
+          rowId: bill.id,
+          data: { household_id: householdId, ...input, start_month: month },
+        });
+        if (input.active) {
+          // Show it in this month's budget right away, even while offline.
+          const item = makeItem(householdId, month, { kind: 'out', name: input.name, amount: input.amount, bill_id: bill.id, due_day: input.due_day });
+          await patchMonthItems(householdId, month, (items) => [...items, item]);
+          queueItemInsert(item);
+          setThisMonth((cur) => ({ ...cur, [bill.id]: { id: item.id, paid: false } }));
+        }
+      }
+      await syncReminders(householdId);
+      return null as string | null;
     },
-    [householdId, afterChange],
+    [householdId, thisMonth, applyBills],
   );
 
   const remove = useCallback(
     async (id: string) => {
-      const { error: e } = await supabase.from('bills').delete().eq('id', id);
-      if (e) return e.message;
-      await afterChange();
-      return null;
+      applyBills((cur) => cur.filter((b) => b.id !== id));
+      void enqueue({ table: 'bills', kind: 'delete', rowId: id });
+      await patchMonthItems(householdId, currentKey(), (items) => items.map((i) => (i.bill_id === id ? { ...i, bill_id: null } : i)));
+      setThisMonth((cur) => {
+        const next = { ...cur };
+        delete next[id];
+        return next;
+      });
+      await syncReminders(householdId);
+      return null as string | null;
     },
-    [afterChange],
+    [householdId, applyBills],
   );
 
   const markPaid = useCallback(
@@ -80,11 +111,11 @@ export function useBills(householdId: string, month = currentKey()) {
         for (const k of Object.keys(next)) if (next[k].id === itemId) next[k] = { ...next[k], paid };
         return next;
       });
-      const { error: e } = await supabase.from('items').update({ paid }).eq('id', itemId);
-      if (e) setError(e.message);
-      await afterChange();
+      await patchMonthItems(householdId, currentKey(), (items) => items.map((i) => (i.id === itemId ? { ...i, paid } : i)));
+      queueItemUpdate(itemId, { paid });
+      await syncReminders(householdId);
     },
-    [afterChange],
+    [householdId],
   );
 
   return { bills, thisMonth, loading, error, save, remove, markPaid, reload: load };

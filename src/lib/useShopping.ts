@@ -1,141 +1,184 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from './supabase';
 import { currentKey } from './format';
-import type { ShopCategory, ShopItem } from './types';
+import { BUILTIN_CATEGORIES, categoryColors } from './theme';
+import { cacheGet, cacheSet, canSync, enqueue, flushQueue, getSyncState, isNetworkError, markSynced, useSyncState, uuid } from './offline';
+import { loadMonthItems, makeItem, patchMonthItems, queueItemInsert, queueItemUpdate } from './itemsData';
+import type { ShopCat, ShopItem } from './types';
 
-const norm = (r: any): ShopItem => ({ ...r, est_price: Number(r.est_price) });
+type CatRow = { id: string; name: string; color: string };
+const normShop = (r: any): ShopItem => ({ ...r, est_price: Number(r.est_price), category: r.category === 'Other' ? 'Others' : r.category });
 
 export type BudgetLine = { id: string; name: string; amount: number; actual: number | null };
-export type BuyAgain = { name: string; category: ShopCategory; est_price: number };
 
 export function useShopping(householdId: string) {
   const [items, setItems] = useState<ShopItem[]>([]);
-  const [archived, setArchived] = useState<ShopItem[]>([]);
+  const [custom, setCustom] = useState<CatRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { version } = useSyncState();
+  const itemsKey = `shop:${householdId}`;
+  const catsKey = `shopcats:${householdId}`;
 
   const load = useCallback(async () => {
-    const [a, b] = await Promise.all([
-      supabase.from('shopping_items').select('*').eq('household_id', householdId).eq('archived', false).order('created_at', { ascending: true }),
-      supabase.from('shopping_items').select('*').eq('household_id', householdId).eq('archived', true).order('created_at', { ascending: false }).limit(200),
-    ]);
-    if (a.error) setError(a.error.message);
-    else {
-      setError(null);
-      setItems((a.data ?? []).map(norm));
+    await flushQueue();
+    const st = getSyncState();
+    if (canSync(st) && st.pending === 0) {
+      const [a, c] = await Promise.all([
+        supabase.from('shopping_items').select('*').eq('household_id', householdId).eq('archived', false).order('created_at', { ascending: true }),
+        supabase.from('shopping_categories').select('*').eq('household_id', householdId).order('created_at', { ascending: true }),
+      ]);
+      if (!a.error) {
+        const rows = (a.data ?? []).map(normShop);
+        setItems(rows);
+        void cacheSet(itemsKey, rows);
+        setError(null);
+        if (!c.error) {
+          const cats = (c.data ?? []) as CatRow[];
+          setCustom(cats);
+          void cacheSet(catsKey, cats);
+        }
+        markSynced();
+        setLoading(false);
+        return;
+      }
+      if (!isNetworkError(a.error)) setError(a.error.message);
     }
-    if (!b.error) setArchived((b.data ?? []).map(norm));
+    setItems((await cacheGet<ShopItem[]>(itemsKey)) ?? []);
+    setCustom((await cacheGet<CatRow[]>(catsKey)) ?? []);
     setLoading(false);
-  }, [householdId]);
+  }, [householdId, itemsKey, catsKey]);
 
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, version]);
 
   useEffect(() => {
     const ch = supabase
       .channel(`shop-${householdId}-${Math.random().toString(36).slice(2, 7)}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shopping_items', filter: `household_id=eq.${householdId}` }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shopping_categories', filter: `household_id=eq.${householdId}` }, () => load())
       .subscribe();
     return () => {
       supabase.removeChannel(ch);
     };
   }, [householdId, load]);
 
-  const add = useCallback(
-    async (name: string, category: ShopCategory, est_price = 0) => {
-      const { data, error: e } = await supabase
-        .from('shopping_items')
-        .insert({ household_id: householdId, name, category, est_price })
-        .select()
-        .single();
-      if (e) return e.message;
-      setItems((cur) => (cur.some((i) => i.id === data.id) ? cur : [...cur, norm(data)]));
-      return null;
+  const applyItems = useCallback(
+    (fn: (cur: ShopItem[]) => ShopItem[]) => {
+      setItems((cur) => {
+        const next = fn(cur);
+        void cacheSet(itemsKey, next);
+        return next;
+      });
     },
-    [householdId],
+    [itemsKey],
+  );
+  const applyCats = useCallback(
+    (fn: (cur: CatRow[]) => CatRow[]) => {
+      setCustom((cur) => {
+        const next = fn(cur);
+        void cacheSet(catsKey, next);
+        return next;
+      });
+    },
+    [catsKey],
+  );
+
+  // Built-in categories first, then the household's own. Items with an unknown category get their own group.
+  const categories = useMemo<ShopCat[]>(() => {
+    const list: ShopCat[] = BUILTIN_CATEGORIES.map((c) => ({ name: c.name, color: c.color, builtin: true }));
+    for (const c of custom) list.push({ id: c.id, name: c.name, color: c.color, builtin: false });
+    const known = new Set(list.map((c) => c.name));
+    for (const i of items) {
+      if (!known.has(i.category)) {
+        known.add(i.category);
+        list.push({ name: i.category, color: '#B4B2A9', builtin: false });
+      }
+    }
+    return list;
+  }, [custom, items]);
+
+  const add = useCallback(
+    async (name: string, category: string, est_price = 0) => {
+      const row: ShopItem = {
+        id: uuid(), household_id: householdId, name, category, est_price, done: false, archived: false, created_at: new Date().toISOString(),
+      };
+      applyItems((cur) => [...cur, row]);
+      void enqueue({ table: 'shopping_items', kind: 'insert', rowId: row.id, data: { household_id: householdId, name, category, est_price } });
+    },
+    [householdId, applyItems],
   );
 
   const update = useCallback(
     async (id: string, patch: Partial<Pick<ShopItem, 'name' | 'category' | 'est_price' | 'done'>>) => {
-      setItems((cur) => cur.map((i) => (i.id === id ? { ...i, ...patch } : i)));
-      const { error: e } = await supabase.from('shopping_items').update(patch).eq('id', id);
-      if (e) {
-        setError(e.message);
-        load();
-      }
+      applyItems((cur) => cur.map((i) => (i.id === id ? { ...i, ...patch } : i)));
+      void enqueue({ table: 'shopping_items', kind: 'update', rowId: id, data: { ...patch } });
     },
-    [load],
+    [applyItems],
   );
 
   const remove = useCallback(
     async (id: string) => {
-      setItems((cur) => cur.filter((i) => i.id !== id));
-      const { error: e } = await supabase.from('shopping_items').delete().eq('id', id);
-      if (e) {
-        setError(e.message);
-        load();
-      }
+      applyItems((cur) => cur.filter((i) => i.id !== id));
+      void enqueue({ table: 'shopping_items', kind: 'delete', rowId: id });
     },
-    [load],
+    [applyItems],
   );
 
-  // Ticked items leave the list but stay in history for "Buy again".
-  const clearTicked = useCallback(async () => {
-    const ids = items.filter((i) => i.done).map((i) => i.id);
-    if (ids.length === 0) return;
-    setItems((cur) => cur.filter((i) => !i.done));
-    const { error: e } = await supabase.from('shopping_items').update({ archived: true }).in('id', ids);
-    if (e) setError(e.message);
-    await load();
-  }, [items, load]);
+  const addCategory = useCallback(
+    async (name: string, color: string) => {
+      const clean = name.trim();
+      if (!clean || categories.some((c) => c.name.toLowerCase() === clean.toLowerCase())) return;
+      const row: CatRow = { id: uuid(), name: clean, color: color || categoryColors[0] };
+      applyCats((cur) => [...cur, row]);
+      void enqueue({ table: 'shopping_categories', kind: 'insert', rowId: row.id, data: { household_id: householdId, name: row.name, color: row.color } });
+    },
+    [householdId, categories, applyCats],
+  );
+
+  // Items from a removed category move to Others.
+  const removeCategory = useCallback(
+    async (cat: ShopCat) => {
+      if (cat.builtin) return;
+      const moving = items.filter((i) => i.category === cat.name);
+      applyItems((cur) => cur.map((i) => (i.category === cat.name ? { ...i, category: 'Others' } : i)));
+      moving.forEach((i) => void enqueue({ table: 'shopping_items', kind: 'update', rowId: i.id, data: { category: 'Others' } }));
+      if (cat.id) {
+        applyCats((cur) => cur.filter((c) => c.id !== cat.id));
+        void enqueue({ table: 'shopping_categories', kind: 'delete', rowId: cat.id });
+      }
+    },
+    [items, applyItems, applyCats],
+  );
 
   const loadBudgetLines = useCallback(async (): Promise<BudgetLine[]> => {
-    const { data } = await supabase
-      .from('items')
-      .select('id,name,amount,actual')
-      .eq('household_id', householdId)
-      .eq('month', currentKey())
-      .eq('kind', 'out')
-      .order('created_at', { ascending: true });
-    return (data ?? []).map((r: any) => ({ id: r.id, name: r.name, amount: Number(r.amount), actual: r.actual == null ? null : Number(r.actual) }));
+    const { items: all } = await loadMonthItems(householdId, currentKey());
+    return all.filter((i) => i.kind === 'out').map((i) => ({ id: i.id, name: i.name, amount: i.amount, actual: i.actual }));
   }, [householdId]);
 
   // Adds what you really spent to a budget line (or creates one), then clears the ticked items.
   const finishShopping = useCallback(
     async (spent: number, line: BudgetLine | null, newLineName: string) => {
+      const month = currentKey();
       if (spent > 0) {
         if (line) {
-          const { error: e } = await supabase.from('items').update({ actual: (line.actual ?? 0) + spent }).eq('id', line.id);
-          if (e) return e.message;
+          const actual = (line.actual ?? 0) + spent;
+          await patchMonthItems(householdId, month, (all) => all.map((i) => (i.id === line.id ? { ...i, actual } : i)));
+          queueItemUpdate(line.id, { actual });
         } else {
-          const { error: e } = await supabase
-            .from('items')
-            .insert({ household_id: householdId, month: currentKey(), kind: 'out', name: newLineName, amount: spent, actual: spent });
-          if (e) return e.message;
+          const item = makeItem(householdId, month, { kind: 'out', name: newLineName, amount: spent, actual: spent });
+          await patchMonthItems(householdId, month, (all) => [...all, item]);
+          queueItemInsert(item);
         }
       }
-      await clearTicked();
-      return null;
+      const ticked = items.filter((i) => i.done);
+      applyItems((cur) => cur.filter((i) => !i.done));
+      ticked.forEach((i) => void enqueue({ table: 'shopping_items', kind: 'update', rowId: i.id, data: { archived: true } }));
+      return null as string | null;
     },
-    [householdId, clearTicked],
+    [householdId, items, applyItems],
   );
 
-  const buyAgain = useMemo<BuyAgain[]>(() => {
-    const active = new Set(items.map((i) => i.name.trim().toLowerCase()));
-    const seen = new Map<string, { item: ShopItem; count: number }>();
-    for (const a of archived) {
-      const k = a.name.trim().toLowerCase();
-      const cur = seen.get(k);
-      if (cur) cur.count += 1;
-      else seen.set(k, { item: a, count: 1 });
-    }
-    return [...seen.entries()]
-      .filter(([k]) => !active.has(k))
-      .sort((x, y) => y[1].count - x[1].count)
-      .slice(0, 10)
-      .map(([, v]) => ({ name: v.item.name, category: v.item.category, est_price: v.item.est_price }));
-  }, [items, archived]);
-
-  return { items, loading, error, add, update, remove, clearTicked, loadBudgetLines, finishShopping, buyAgain, reload: load };
+  return { items, categories, loading, error, add, update, remove, addCategory, removeCategory, loadBudgetLines, finishShopping, reload: load };
 }

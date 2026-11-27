@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, StyleProp, Text, TextStyle, View, ViewStyle } from 'react-native';
+import { Animated, Easing, Pressable, StyleProp, TextStyle, View, ViewStyle } from 'react-native';
+import { Text } from './Text';
 
 // Gentle floating, like the little friends on the inspiration page.
 export function Bob({

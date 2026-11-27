@@ -25,7 +25,9 @@ export type Bill = {
   active: boolean;
   start_month: string;
 };
-export type ShopCategory = 'Groceries' | 'Household' | 'Baby' | 'Other';
+// Built-in categories use the keys Groceries, Household and Others. Custom ones use their own name.
+export type ShopCategory = string;
+export type ShopCat = { name: string; color: string; builtin: boolean; id?: string };
 export type ShopItem = {
   id: string;
   household_id: string;

@@ -1,7 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import type { Session } from '@supabase/supabase-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../lib/supabase';
+import { canSync, flushQueue, isNetworkError, resetOffline } from '../lib/offline';
 import type { AnimalId, Household, Profile } from '../lib/types';
 
 type SignUpArgs = { name: string; email: string; password: string; animal: AnimalId; joinCode?: string };
@@ -22,6 +25,18 @@ type Ctx = {
 };
 
 const AuthCtx = createContext<Ctx | null>(null);
+
+// A copy of who you are, so the app opens even with no signal.
+type Snapshot = { userId: string; profile: Profile; household: Household | null; members: Profile[] };
+const SNAP_KEY = 'auth_snapshot';
+async function readSnapshot(): Promise<Snapshot | null> {
+  try {
+    const v = await AsyncStorage.getItem(SNAP_KEY);
+    return v ? (JSON.parse(v) as Snapshot) : null;
+  } catch {
+    return null;
+  }
+}
 
 export function useAuth(): Ctx {
   const c = useContext(AuthCtx);
@@ -86,8 +101,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setHousehold((h.data as Household) ?? null);
       setMembers((ms.data ?? []) as Profile[]);
       setProfile(p as Profile);
+      AsyncStorage.setItem(
+        SNAP_KEY,
+        JSON.stringify({ userId: sess.user.id, profile: p, household: h.data ?? null, members: ms.data ?? [] }),
+      ).catch(() => {});
     } catch (err: any) {
       if (stale()) return;
+      // No signal: open with the copy saved on this phone.
+      const snap = await readSnapshot();
+      if (snap && sess && snap.userId === sess.user.id && isNetworkError(err)) {
+        setSetupError(null);
+        setHousehold(snap.household);
+        setMembers(snap.members);
+        setProfile(snap.profile);
+        return;
+      }
       const raw = String(err?.message ?? err);
       const denied = err?.code === '42501' || /permission denied/i.test(raw);
       setSetupError(
@@ -103,8 +131,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let alive = true;
     supabase.auth.getSession().then(async ({ data }) => {
       if (!alive) return;
-      setSession(data.session);
-      await loadProfile(data.session);
+      let sess = data.session;
+      if (!sess) {
+        // Signed in before but there's no signal to refresh the login: stay in using the saved copy.
+        const snap = await readSnapshot();
+        const net = await NetInfo.fetch();
+        const offline = !(net.isConnected === true && net.isInternetReachable !== false);
+        if (snap && offline) sess = { user: { id: snap.userId, user_metadata: {} } } as unknown as Session;
+      }
+      setSession(sess);
+      await loadProfile(sess);
       if (alive) setLoading(false);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
@@ -152,6 +188,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signOut: async () => {
         // Clear everything right away so the screen switches instantly, even if the network is slow.
         loadTicket.current++;
+        // Upload anything still waiting, then forget this household's data on the phone.
+        if (canSync()) await Promise.race([flushQueue(true), new Promise((r) => setTimeout(r, 4000))]);
+        await resetOffline();
         setSession(null);
         setProfile(null);
         setHousehold(null);
