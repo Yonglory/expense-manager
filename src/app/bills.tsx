@@ -622,7 +622,7 @@ const s = StyleSheet.create({
   markPaid: { backgroundColor: colors.green },
   markUnpaid: { backgroundColor: colors.blueSoft },
   editBtn: { backgroundColor: colors.blueSoft },
-  markText: { fontSize: 16, fontWeight: '700' },
+  markText: { fontSize: 15, fontWeight: '700' },
 
   nextCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
