@@ -37,7 +37,7 @@ export function daysInMonth(year: number, month0: number): number {
   return new Date(year, month0 + 1, 0).getDate();
 }
 // The due date of a monthly bill; day 31 in a short month becomes the last day of that month.
-export function dueDateFor(key: string, day: number, hour = 0): Date {
+export function dueDateFor(key: string, day: number, hour = 0, minute = 0): Date {
   const { year, month0 } = parseKey(key);
-  return new Date(year, month0, Math.min(day, daysInMonth(year, month0)), hour, 0, 0);
+  return new Date(year, month0, Math.min(day, daysInMonth(year, month0)), hour, minute, 0);
 }

@@ -15,10 +15,10 @@ export function Button({
   );
 }
 
-export function Field(props: TextInputProps & { icon?: React.ReactNode }) {
-  const { icon, style, ...rest } = props;
+export function Field(props: TextInputProps & { icon?: React.ReactNode; containerStyle?: StyleProp<ViewStyle> }) {
+  const { icon, style, containerStyle, ...rest } = props;
   return (
-    <View style={s.field}>
+    <View style={[s.field, containerStyle]}>
       {icon}
       <TextInput placeholderTextColor={colors.muted} style={[s.input, style]} {...rest} />
     </View>

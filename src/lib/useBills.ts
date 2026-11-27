@@ -6,14 +6,13 @@ import { syncReminders } from './reminders';
 
 export type BillInput = { name: string; amount: number; due_day: number; remind_days_before: number; active: boolean };
 
-export function useBills(householdId: string) {
+export function useBills(householdId: string, month = currentKey()) {
   const [bills, setBills] = useState<Bill[]>([]);
   const [thisMonth, setThisMonth] = useState<Record<string, Pick<Item, 'id' | 'paid'>>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const month = currentKey();
     // Make sure this month's items exist so "Mark paid" works right away.
     await supabase.rpc('ensure_month_bills', { p_month: month });
     const [b, i] = await Promise.all([
@@ -29,9 +28,10 @@ export function useBills(householdId: string) {
     for (const r of i.data ?? []) map[(r as any).bill_id] = { id: (r as any).id, paid: (r as any).paid };
     setThisMonth(map);
     setLoading(false);
-  }, [householdId]);
+  }, [householdId, month]);
 
   useEffect(() => {
+    setLoading(true);
     load();
   }, [load]);
 
